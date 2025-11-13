@@ -99,6 +99,43 @@ pub mod types {
                 },
             };
         }
+        pub fn get_command(&self, cmd: &str) -> String {
+            let command: String = match self.scripts[cmd].as_str() {
+                Some(cmd_str) => String::from(cmd_str),
+                None => {
+                    let mut cmd_str = match self.pkg_manager {
+                        PackageManager::NPM => String::from("npm run"),
+                        PackageManager::PNPM => String::from("pnpm run"),
+                        PackageManager::YARN => String::from("yarn"),
+                    };
+
+                    cmd_str.push_str(cmd);
+                    cmd_str
+                }
+            };
+
+            return command;
+        }
+    }
+}
+
+pub mod processor {
+    use std::process::{Child, Command};
+
+    pub fn run_command(cmd: &str) -> Option<Child> {
+        let cmd_v: Vec<String> = cmd.split(" ").map(|str| str.trim().to_string()).collect();
+
+        let base_cmd = &cmd_v[0];
+        let args = &cmd_v[1..];
+        let mut command = Command::new(base_cmd);
+        command.args(args);
+        match command.spawn() {
+            Ok(child) => Some(child),
+            Err(err) => {
+                println!("{:?}", err);
+                None
+            }
+        }
     }
 }
 
@@ -152,5 +189,14 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_script_command() {
+        let conf: Config = Config::new("./test_data/package.json");
+
+        let cmd = conf.get_command("dev");
+
+        assert_eq!(cmd, String::from("npm run dev"))
     }
 }
