@@ -24,7 +24,7 @@ With a local installation, stalkerjs will not be available in your system path o
 stalkerjs was originally written to restart hanging processes such as web servers, but now supports apps that cleanly exit. If your script exits cleanly, stalkerjs will continue to monitor the directory (or directories) and restart the script if there are any changes.
 
 
-Features in-development:
+# Features In-Development
 - Support for path in cli arguments
 - Default script search
 - Manual restarting with `rst` command
