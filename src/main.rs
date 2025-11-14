@@ -1,39 +1,19 @@
-use std::{path::Path, process::Command, sync::mpsc};
+use std::{
+    io::{BufRead, BufReader, Error, Read, Write},
+    path::Path,
+    process::Command,
+    sync::mpsc,
+};
 
 use notify::{Event, Result, Watcher};
-use stalkerjs::{processor::run_command, types::Config};
-
-fn should_ignore_path(path: &String) -> bool {
-    if path.contains("build")
-        || path.contains("node_modules")
-        || path.ends_with(".env")
-        || path.ends_with(".gitignore")
-        || path.ends_with(".next")
-        || path.ends_with(".git")
-        || path.contains("target")
-        || path.contains(".vscode")
-        || path.contains("dist")
-        || (!(path.ends_with(".ts"))
-            && !(path.ends_with(".js"))
-            && !(path.ends_with(".tsx"))
-            && !(path.ends_with(".jsx"))
-            && !(path.ends_with(".json")))
-    {
-        return true;
-    }
-
-    return false;
-}
+use stalkerjs::{
+    processor::{run_command, should_ignore_path},
+    types::Config,
+};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let confg = Config::new("./package.json");
-
-    if args.len() <= 1 {
-        panic!("Missing: Command name");
-    }
-
-    let cmd = confg.get_command(&args[1]);
+    let confg = Config::new("./package.json", args);
 
     let (tx, rx) = mpsc::channel::<Result<Event>>();
 
@@ -42,7 +22,7 @@ fn main() {
 
     let mut pid: u32 = 0;
 
-    let child = run_command(&cmd);
+    let child = run_command(&confg);
     pid = child.unwrap().id();
 
     for res in rx {
@@ -75,8 +55,8 @@ fn main() {
                         );
                     }
                 }
-                let child = run_command(&cmd);
-                pid = child.unwrap().id();
+                let child = run_command(&confg).unwrap();
+                pid = child.id();
             }
             Err(_) => {}
         }
