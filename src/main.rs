@@ -5,11 +5,11 @@ use std::{
     sync::mpsc,
 };
 
-use iris::{
+use notify::{Event, Result, Watcher};
+use wachit::{
     processor::{run_command, should_ignore_path},
     types::Config,
 };
-use notify::{Event, Result, Watcher};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

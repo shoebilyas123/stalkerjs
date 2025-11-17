@@ -1,5 +1,5 @@
 pub mod constants {
-    pub const CONFIG_FILE: &str = "iris.json";
+    pub const CONFIG_FILE: &str = "wachit.json";
 }
 
 pub mod types {
@@ -105,7 +105,7 @@ pub mod types {
             }
 
             if args.len() < 2 {
-                panic!("Format: iris [iris options] [target or command name]")
+                panic!("Format: wachit [wachit options] [target or command name]")
             }
 
             new_config.args = args;
@@ -254,7 +254,7 @@ pub mod processor {
             .map(|str| str.trim().to_string())
             .collect();
 
-        println!("Starting iris process...");
+        println!("Starting wachit process...");
         let base_cmd = &cmd_v[0];
         let args = &cmd_v[1..];
         let mut command = Command::new(base_cmd);
@@ -277,7 +277,7 @@ pub mod processor {
     }
 
     pub fn should_ignore_path(path: &String) -> bool {
-        if path.contains("iris.json")
+        if path.contains("wachit.json")
             || path.contains("build")
             || path.contains("node_modules")
             || path.ends_with(".env")
