@@ -44,6 +44,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "iris"
+version = "0.1.0"
+dependencies = [
+ "notify",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -197,15 +206,6 @@ dependencies = [
  "ryu",
  "serde",
  "serde_core",
-]
-
-[[package]]
-name = "stalkerjs"
-version = "0.1.0"
-dependencies = [
- "notify",
- "serde",
- "serde_json",
 ]
 
 [[package]]
