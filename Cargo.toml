@@ -1,5 +1,5 @@
 [package]
-name = Q"wachit"
+name = "wachit"
 version = "0.1.0"
 edition = "2024"
 description = "Instant rebuilds for your dev workflow"
