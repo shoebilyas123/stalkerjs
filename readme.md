@@ -7,34 +7,59 @@ Wachit does **not** require *any* additional changes to your code or development
 
 # Installation
 
-Either through cloning with git or by using `cargo install` command
-
+Make sure rust is installed on your system. If not you can refer to the rust Installation instructions [here](https://rust-lang.org/tools/install/): 
 ```bash
 cargo install wachit
 ```
 
 And wachit will be installed globally to your system path.
 # Usage
+As of the current version, we only support JavaScript runtime.
 
-## Automatic re-running
+## Using CLI
+Navigate to your project directory and run the command in the following format:
+> `wachit [wachit options] [target or command name]`.
 
-wachit was originally written to restart hanging processes such as web servers, but now supports apps that cleanly exit. If your script exits cleanly, wachit will continue to monitor the directory (or directories) and restart the script if there are any changes.
+### wachit options
+You can pass multiple options to configure wachit runtime. As of the current version, we only support `inspect` option and we will introduce more options in the upcoming releases.
+
+`inspect`: This command only runs with a provided file name. This will be serialied to `node --inspect [provided-file-name]`. If you want to use inspect with a script, then define it in that particular script and pass the script command to wachit. 
+
+### Target or Command name
+If you provide a file name, wachit will use your project's package manager to run that file. If you provide a command name, wachit will search for the command in the scripts. If the script is found, wachit will run that script with your package manager.
+
+## Using Config file
+
+If there is a wachit.json file present in the current working directory, wachit will prioritize it over any cli arguments. The following code defines the configuration keys you can define in the wachit.json file. Remember, using a config will render all cli arguments as null and void.
+
+```ts
+type Config = {
+  scripts: {[key: string]: string;}; // List of available scripts pulled from the package.json file
+  pkg_manager: "NPM" | "PNPM" | "YARN";
+  target: string; // Filepath or the command in defined in the scripts
+  inspect: Boolean; // Whether we want to inspect with node
+}
+}
+```
 
 
 # Features In-Development
-- Support for path in cli arguments
-- Default script search
 - Manual restarting with `rst` command
-- Using wachit as a child process
-- Using wachit as a module
-- Running non-node scripts
-- Manually configuring Wachit with `Wachit.json` config file
+- Running non-node scripts and extension for runtimes and environments beyond JavaScript.
 - Monitoring multiple directories
-- Unix globbing
 - Specifying extension watch list
 - Ignoring files extended support
 
-Wachit is not perfect, and CLI arguments has sprawled beyond where I'm completely happy, but perhaps it can be reduced a little one day.
+# Contributing
+
+Wachit is not perfect and that is why it needs talented developers like you to contribute.
+
+If you have a feature suggestion or come across a bug please don't hesitate to open a ticket. I have too much free time on my hands to not go through your ideas and suggestions. If you get my approval on any feature or bugfix, you can contribute in the following steps:
+1. Clone the git repository.
+2. Create a branch, code something cool.
+3. Create a pull-request.
+
+That's all.
 
 # License
 
