@@ -2,6 +2,8 @@
 name = "iris"
 version = "0.1.0"
 edition = "2024"
+description = "A real-time file-watcher inspired by nodemon"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 notify = "8.2.0"
