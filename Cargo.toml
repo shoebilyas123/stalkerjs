@@ -2,8 +2,12 @@
 name = "watchit"
 version = "0.1.0"
 edition = "2024"
-description = "A real-time file-watcher inspired by nodemon"
+description = "Instant rebuilds for your dev workflow"
 license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "watchit"
+path = "src/main.rs"
 
 [dependencies]
 notify = "8.2.0"
