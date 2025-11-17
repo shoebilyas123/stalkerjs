@@ -1,10 +1,17 @@
+pub mod constants {
+    pub const CONFIG_FILE: &str = "iris.json";
+}
+
 pub mod types {
-    use serde::{Deserialize, Serialize};
-    use serde_json::{Map, Value};
     use std::{
         fs::{self, File},
         io::{ErrorKind, Read},
     };
+
+    use serde::{Deserialize, Serialize};
+    use serde_json::{Map, Value};
+
+    use crate::processor;
 
     #[derive(Serialize, Deserialize, Debug)]
     pub enum ConfigValues {
@@ -31,8 +38,8 @@ pub mod types {
         #[serde(default = "set_default_pkg_manager")]
         pub pkg_manager: PackageManager,
 
-        #[serde(default = "set_default_target_file")]
-        pub target_file: String,
+        #[serde(default = "set_default_target")]
+        pub target: String,
 
         #[serde(default = "set_default_args")]
         pub args: Vec<String>,
@@ -44,7 +51,65 @@ pub mod types {
         pub target_index: usize,
     }
     impl Config {
+        pub fn create_default_config() -> Config {
+            Config {
+                scripts: set_default_scripts(),
+                args: set_default_args(),
+                inspect: set_default_inspect(),
+                pkg_manager: set_default_pkg_manager(),
+                target: set_default_target(),
+                target_index: set_default_target_index(),
+            }
+        }
         pub fn new(project_dir: &str, args: Vec<String>) -> Config {
+            let file_conf_result = processor::load_file_config();
+            let mut is_config_file: bool = false;
+            let mut new_config: Config = match file_conf_result {
+                Some(_conf) => {
+                    is_config_file = true;
+                    _conf
+                }
+                _ => Config::create_default_config(),
+            };
+
+            let file_result = File::open(project_dir);
+
+            match file_result {
+                Ok(mut file) => {
+                    let mut pkg_json_file = String::new();
+                    match file.read_to_string(&mut pkg_json_file) {
+                        Ok(_) => {
+                            let conf: Config = serde_json::from_str(&pkg_json_file).unwrap();
+                            new_config.scripts = conf.scripts;
+                        }
+                        Err(err) => {
+                            panic!("Error reading from package.json = {:?}", err);
+                        }
+                    }
+                }
+                Err(err) => match err.kind() {
+                    ErrorKind::NotFound => {
+                        println!("Missing file: package.json");
+                    }
+                    ErrorKind::PermissionDenied => {
+                        println!("The user does not have the permission to access package.json");
+                    }
+                    _ => {
+                        println!("Error opening package.json:{:?}", err);
+                    }
+                },
+            };
+
+            if is_config_file {
+                return new_config;
+            }
+
+            if args.len() < 2 {
+                panic!("Format: iris [iris options] [target or command name]")
+            }
+
+            new_config.args = args;
+
             let pkg_mngr_options = vec!["pnpm-lock.yaml", "package-lock.json", "yarn.lock"];
             let mut pkg_manager = PackageManager::NPM;
 
@@ -74,76 +139,39 @@ pub mod types {
                 }
             }
 
-            // Check if the first argument is a file
-            // We will process our command based on this condition
+            new_config.pkg_manager = pkg_manager;
             let mut target_index = 1;
             let mut inspect = false;
-            if args[1].eq("--inspect") {
+            if new_config.args[1].eq("--inspect") {
                 target_index = 2;
                 inspect = true;
             }
+            new_config.inspect = inspect;
+            new_config.target_index = target_index;
 
-            let target = File::open(&args[target_index]);
+            let target = File::open(&new_config.args[new_config.target_index]);
 
             let target_file: String = match target {
-                Ok(_) => String::from(&args[target_index]),
+                Ok(_) => String::from(&new_config.args[target_index]),
                 Err(_) => String::new(),
             };
-
-            let mut new_config = Config {
-                scripts: Map::new(),
-                pkg_manager,
-                target_file,
-                args,
-                inspect,
-                target_index,
-            };
-            let file_result = File::open(project_dir);
-
-            match file_result {
-                Ok(mut file) => {
-                    let mut pkg_json_file = String::new();
-                    match file.read_to_string(&mut pkg_json_file) {
-                        Ok(_) => {
-                            let conf: Config = serde_json::from_str(&pkg_json_file).unwrap();
-                            new_config.scripts = conf.scripts;
-                        }
-                        Err(err) => {
-                            panic!("Error reading from package.json = {:?}", err);
-                        }
-                    }
-                }
-                Err(err) => match err.kind() {
-                    ErrorKind::NotFound => {
-                        println!("Missing file: package.json");
-                    }
-                    ErrorKind::PermissionDenied => {
-                        println!("The user does not have the permission to access package.json");
-                    }
-                    _ => {
-                        println!("Error opening package.json:{:?}", err);
-                    }
-                },
-            };
+            new_config.target = target_file;
 
             new_config
         }
         pub fn get_command(&self) -> String {
-            if self.target_file.len() <= 0 && self.inspect == true {
+            if !self.target.contains(".") && self.inspect == true {
                 panic!("Missing: Node inspect file path");
-            } else if self.target_file.len() > 0 {
+            } else if self.target.contains(".") {
                 let mut cmd = String::from("node ");
                 if self.inspect == true {
                     cmd.push_str("--inspect ");
                 }
 
-                cmd.push_str(&self.target_file);
+                cmd.push_str(&self.target);
                 cmd
             } else {
-                let command: String = match self
-                    .scripts
-                    .get(&self.args[self.target_index])
-                    .and_then(|v| v.as_str())
+                let command: String = match self.scripts.get(&self.target).and_then(|v| v.as_str())
                 {
                     Some(cmd) => String::from(cmd),
                     _ => {
@@ -154,13 +182,7 @@ pub mod types {
                             PackageManager::NIL => String::from("node "),
                         };
 
-                        cmd_str.push_str(&self.args[self.target_index]);
-
-                        let target = &self.args[self.target_index];
-
-                        if target.ends_with(".js") || target.ends_with(".ts") {
-                            cmd_str.push_str(" index.js");
-                        }
+                        cmd_str.push_str(&self.target);
 
                         cmd_str
                     }
@@ -181,7 +203,7 @@ pub mod types {
     fn set_default_scripts() -> Map<String, Value> {
         Map::new()
     }
-    fn set_default_target_file() -> String {
+    fn set_default_target() -> String {
         String::new()
     }
     fn set_default_args() -> Vec<String> {
@@ -198,12 +220,32 @@ pub mod types {
 }
 
 pub mod processor {
+    use crate::constants::CONFIG_FILE;
     use std::{
-        io::Stdin,
+        fs::File,
+        io::Read,
         process::{Child, Command, Stdio},
     };
 
     use crate::types::Config;
+
+    pub fn load_file_config() -> Option<Config> {
+        let conf_file = File::open(&CONFIG_FILE);
+
+        match conf_file {
+            Ok(mut config_file) => {
+                let mut config_string: String = String::new();
+                match config_file.read_to_string(&mut config_string) {
+                    Ok(_) => {
+                        let conf: Config = serde_json::from_str(&config_string).unwrap();
+                        Some(conf)
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
 
     pub fn run_command(config: &Config) -> Option<Child> {
         let cmd_v: Vec<String> = config
@@ -212,13 +254,18 @@ pub mod processor {
             .map(|str| str.trim().to_string())
             .collect();
 
-        println!("Starting stalkerjs");
+        println!("Starting iris process...");
         let base_cmd = &cmd_v[0];
         let args = &cmd_v[1..];
         let mut command = Command::new(base_cmd);
+        command.stdout(Stdio::piped());
         command.args(args);
-        command.args(&config.args[config.target_index + 1..]);
-        // command.stdin(Stdio::piped()).stdout(Stdio::piped());
+
+        if config.target.len() > 0 {
+            command.args([&config.target]);
+        }
+
+        println!("{:?}", config.get_command());
 
         match command.spawn() {
             Ok(child) => Some(child),
@@ -230,7 +277,8 @@ pub mod processor {
     }
 
     pub fn should_ignore_path(path: &String) -> bool {
-        if path.contains("build")
+        if path.contains("iris.json")
+            || path.contains("build")
             || path.contains("node_modules")
             || path.ends_with(".env")
             || path.ends_with(".gitignore")
