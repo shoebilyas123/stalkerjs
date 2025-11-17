@@ -1,5 +1,5 @@
 [package]
-name = "iris"
+name = "watchit"
 version = "0.1.0"
 edition = "2024"
 description = "A real-time file-watcher inspired by nodemon"
