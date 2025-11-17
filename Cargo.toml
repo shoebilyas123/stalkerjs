@@ -6,7 +6,7 @@ description = "Instant rebuilds for your dev workflow"
 license = "MIT OR Apache-2.0"
 
 [[bin]]
-name = "watchit"
+name = "wachit"
 path = "src/main.rs"
 
 [dependencies]
