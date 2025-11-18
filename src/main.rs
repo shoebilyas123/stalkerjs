@@ -13,7 +13,7 @@ use wachit::{
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let confg = Config::new("./package.json", args);
+    let confg = Config::new(args);
 
     let (tx, rx) = mpsc::channel::<Result<Event>>();
 

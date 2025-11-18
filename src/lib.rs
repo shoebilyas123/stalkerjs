@@ -1,9 +1,11 @@
 pub mod constants {
     pub const CONFIG_FILE: &str = "wachit.json";
+    pub const ERR_MESSAGE: &str = "wacht [wachit options] [target file]";
 }
 
 pub mod types {
     use std::{
+        fmt,
         fs::{self, File},
         io::{ErrorKind, Read},
     };
@@ -11,6 +13,7 @@ pub mod types {
     use serde::{Deserialize, Serialize};
     use serde_json::{Map, Value};
 
+    use crate::constants::ERR_MESSAGE;
     use crate::processor;
 
     #[derive(Serialize, Deserialize, Debug)]
@@ -18,50 +21,37 @@ pub mod types {
         String,
     }
     #[derive(Serialize, Deserialize, Debug, PartialEq)]
-    pub enum PackageManager {
-        NPM,
-        PNPM,
-        YARN,
-        NIL,
+    pub enum Executable {
+        NODE,
     }
-    impl Default for PackageManager {
-        fn default() -> Self {
-            PackageManager::NPM
+    impl fmt::Display for Executable {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self {
+                Executable::NODE => write!(f, "node"),
+            }
         }
     }
 
     #[derive(Serialize, Deserialize, Debug)]
     pub struct Config {
-        #[serde[default = "set_default_scripts"]]
-        pub scripts: Map<String, Value>,
-
-        #[serde(default = "set_default_pkg_manager")]
-        pub pkg_manager: PackageManager,
+        #[serde(default = "set_default_executable")]
+        pub executable: Executable,
 
         #[serde(default = "set_default_target")]
         pub target: String,
 
-        #[serde(default = "set_default_args")]
-        pub args: Vec<String>,
-
         #[serde(default = "set_default_inspect")]
         pub inspect: bool,
-
-        #[serde(default = "set_default_target_index")]
-        pub target_index: usize,
     }
     impl Config {
         pub fn create_default_config() -> Config {
             Config {
-                scripts: set_default_scripts(),
-                args: set_default_args(),
                 inspect: set_default_inspect(),
-                pkg_manager: set_default_pkg_manager(),
+                executable: set_default_executable(),
                 target: set_default_target(),
-                target_index: set_default_target_index(),
             }
         }
-        pub fn new(project_dir: &str, args: Vec<String>) -> Config {
+        pub fn new(args: Vec<String>) -> Config {
             let file_conf_result = processor::load_file_config();
             let mut is_config_file: bool = false;
             let mut new_config: Config = match file_conf_result {
@@ -72,34 +62,6 @@ pub mod types {
                 _ => Config::create_default_config(),
             };
 
-            let file_result = File::open(project_dir);
-
-            match file_result {
-                Ok(mut file) => {
-                    let mut pkg_json_file = String::new();
-                    match file.read_to_string(&mut pkg_json_file) {
-                        Ok(_) => {
-                            let conf: Config = serde_json::from_str(&pkg_json_file).unwrap();
-                            new_config.scripts = conf.scripts;
-                        }
-                        Err(err) => {
-                            panic!("Error reading from package.json = {:?}", err);
-                        }
-                    }
-                }
-                Err(err) => match err.kind() {
-                    ErrorKind::NotFound => {
-                        println!("Missing file: package.json");
-                    }
-                    ErrorKind::PermissionDenied => {
-                        println!("The user does not have the permission to access package.json");
-                    }
-                    _ => {
-                        println!("Error opening package.json:{:?}", err);
-                    }
-                },
-            };
-
             if is_config_file {
                 return new_config;
             }
@@ -108,114 +70,51 @@ pub mod types {
                 panic!("Format: wachit [wachit options] [target or command name]")
             }
 
-            new_config.args = args;
-
-            let pkg_mngr_options = vec!["pnpm-lock.yaml", "package-lock.json", "yarn.lock"];
-            let mut pkg_manager = PackageManager::NPM;
-
-            for (idx, opt) in pkg_mngr_options.iter().enumerate() {
-                match fs::exists(opt) {
-                    Ok(true) => match idx {
-                        0 => {
-                            pkg_manager = PackageManager::PNPM;
-                            break;
-                        }
-                        1 => {
-                            pkg_manager = PackageManager::NPM;
-                            break;
-                        }
-                        2 => {
-                            pkg_manager = PackageManager::YARN;
-                            break;
-                        }
-                        _ => {
-                            pkg_manager = PackageManager::NIL;
-                            break;
-                        }
-                    },
-                    _ => {
-                        continue;
-                    }
-                }
-            }
-
-            new_config.pkg_manager = pkg_manager;
             let mut target_index = 1;
             let mut inspect = false;
-            if new_config.args[1].eq("--inspect") {
+            if args[1].eq("--inspect") {
                 target_index = 2;
                 inspect = true;
             }
             new_config.inspect = inspect;
-            new_config.target_index = target_index;
 
-            let target = File::open(&new_config.args[new_config.target_index]);
+            if target_index >= args.len() {
+                panic!("{ERR_MESSAGE}");
+            }
+
+            let target = File::open(&args[target_index]);
 
             let target_file: String = match target {
-                Ok(_) => String::from(&new_config.args[target_index]),
-                Err(_) => String::new(),
+                Ok(_) => String::from(&args[target_index]),
+                Err(_) => {
+                    panic!("Invalid arguments: Target file not specified");
+                }
             };
             new_config.target = target_file;
-
             new_config
         }
         pub fn get_command(&self) -> String {
-            if !self.target.contains(".") && self.inspect == true {
-                panic!("Missing: Node inspect file path");
-            } else if self.target.contains(".") {
-                let mut cmd = String::from("node ");
-                if self.inspect == true {
-                    cmd.push_str("--inspect ");
-                }
+            let mut cmd = String::from(self.executable.to_string());
 
-                cmd.push_str(&self.target);
-                cmd
-            } else {
-                let command: String = match self.scripts.get(&self.target).and_then(|v| v.as_str())
-                {
-                    Some(cmd) => String::from(cmd),
-                    _ => {
-                        let mut cmd_str = match self.pkg_manager {
-                            PackageManager::NPM => String::from("npm run "),
-                            PackageManager::PNPM => String::from("pnpm run "),
-                            PackageManager::YARN => String::from("yarn "),
-                            PackageManager::NIL => String::from("node "),
-                        };
+            if self.inspect {
+                cmd.push_str(" --inspect");
+            };
 
-                        cmd_str.push_str(&self.target);
+            cmd.push_str(" ");
+            cmd.push_str(&self.target);
 
-                        cmd_str
-                    }
-                };
-
-                return command;
-            }
-        }
-
-        pub fn get_arguments(&self) -> &Vec<String> {
-            &self.args
+            return cmd;
         }
     }
 
-    fn set_default_pkg_manager() -> PackageManager {
-        PackageManager::NPM
-    }
-    fn set_default_scripts() -> Map<String, Value> {
-        Map::new()
+    fn set_default_executable() -> Executable {
+        Executable::NODE
     }
     fn set_default_target() -> String {
         String::new()
     }
-    fn set_default_args() -> Vec<String> {
-        Vec::new()
-    }
-
     fn set_default_inspect() -> bool {
         false
-    }
-
-    fn set_default_target_index() -> usize {
-        1
     }
 }
 
@@ -258,12 +157,7 @@ pub mod processor {
         let base_cmd = &cmd_v[0];
         let args = &cmd_v[1..];
         let mut command = Command::new(base_cmd);
-        command.stdout(Stdio::piped());
         command.args(args);
-
-        if config.target.len() > 0 {
-            command.args([&config.target]);
-        }
 
         println!("{:?}", config.get_command());
 
@@ -297,68 +191,5 @@ pub mod processor {
         }
 
         return false;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::types::{Config, PackageManager};
-    use std::fs;
-
-    #[test]
-    fn test_read_pkg_json() {
-        let _: Config = Config::new("./test_data/package.json", vec![]);
-        assert!(true);
-    }
-
-    #[test]
-    fn test_read_pkg_json_scripts() {
-        let conf: Config = Config::new("./test_data/package.json", vec![]);
-        assert_eq!(conf.scripts["build"].as_str(), Some("npm run build"));
-        assert_eq!(conf.scripts["dev"].as_str(), Some("npm run dev"));
-        assert_eq!(conf.scripts["start"].as_str(), Some("npm run start"));
-    }
-
-    #[test]
-    fn test_pkg_managers() {
-        let conf: Config = Config::new("./test_data/package.json", vec![]);
-        let pkg_mngr_options = vec!["pnpm-lock.yaml", "package-lock.json", "yarn.lock"];
-
-        for (idx, opt) in pkg_mngr_options.iter().enumerate() {
-            match fs::exists(opt) {
-                Ok(true) => match idx {
-                    0 => {
-                        assert_eq!(conf.pkg_manager, PackageManager::PNPM);
-                        break;
-                    }
-                    1 => {
-                        assert_eq!(conf.pkg_manager, PackageManager::NPM);
-
-                        break;
-                    }
-                    2 => {
-                        assert_eq!(conf.pkg_manager, PackageManager::YARN);
-                        break;
-                    }
-                    _ => {
-                        assert_eq!(conf.pkg_manager, PackageManager::NPM);
-                        break;
-                    }
-                },
-                _ => {
-                    continue;
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn test_script_command() {
-        let args = Vec::from([String::from(""), String::from("dev")]);
-        let conf: Config = Config::new("./test_data/package.json", args);
-
-        let cmd = conf.get_command();
-
-        assert_eq!(cmd, String::from("npm run dev"))
     }
 }
