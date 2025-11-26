@@ -1,6 +1,13 @@
 pub mod constants {
+    use std::collections::HashMap;
+
     pub const CONFIG_FILE: &str = "wachit.json";
     pub const ERR_MESSAGE: &str = "wacht [wachit options] [target file]";
+
+    pub const PY_EXTS: &str = ".py";
+    pub const NODE_EXTS: &str = ".js .jsx .ts .tsx";
+    pub const GOLANG_EXTS: &str = ".go";
+    pub const CARGO_EXTS: &str = ".rs";
 }
 
 pub mod types {
@@ -8,12 +15,13 @@ pub mod types {
         fmt,
         fs::{self, File},
         io::{ErrorKind, Read},
+        ops::Index,
     };
 
     use serde::{Deserialize, Serialize};
     use serde_json::{Map, Value};
 
-    use crate::constants::ERR_MESSAGE;
+    use crate::constants::{CARGO_EXTS, ERR_MESSAGE, GOLANG_EXTS, NODE_EXTS, PY_EXTS};
     use crate::processor;
 
     #[derive(Serialize, Deserialize, Debug)]
@@ -23,11 +31,18 @@ pub mod types {
     #[derive(Serialize, Deserialize, Debug, PartialEq)]
     pub enum Executable {
         NODE,
+        GOLANG,
+        CARGO,
+        PYTHON,
     }
+
     impl fmt::Display for Executable {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match self {
                 Executable::NODE => write!(f, "node"),
+                Executable::GOLANG => write!(f, "go run"),
+                Executable::PYTHON => write!(f, "python3"),
+                Executable::CARGO => write!(f, "cargo run"),
             }
         }
     }
@@ -42,6 +57,12 @@ pub mod types {
 
         #[serde(default = "set_default_inspect")]
         pub inspect: bool,
+
+        #[serde(default = "set_default_ignore_list")]
+        pub ignore_list: Vec<String>,
+
+        #[serde(default = "set_default_watch_list")]
+        pub watch_list: Vec<String>,
     }
     impl Config {
         pub fn create_default_config() -> Config {
@@ -49,9 +70,58 @@ pub mod types {
                 inspect: set_default_inspect(),
                 executable: set_default_executable(),
                 target: set_default_target(),
+                watch_list: set_default_watch_list(),
+                ignore_list: set_default_ignore_list(),
             }
         }
+
+        pub fn should_restart(&self, path: &str) -> bool {
+            if self.ignore_list.len() > 0 {
+                for wf in &self.ignore_list {
+                    let mut fs = wf.clone();
+
+                    if wf.starts_with(".") {
+                        fs = wf[1..].to_string();
+                    }
+
+                    if path.ends_with(&fs) {
+                        return false;
+                    }
+                }
+            }
+
+            if self.watch_list.len() > 0 {
+                for wf in &self.watch_list {
+                    let mut fs = wf.clone();
+
+                    if wf.starts_with(".") {
+                        fs = wf[1..].to_string();
+                    }
+
+                    if path.ends_with(&fs) {
+                        return true;
+                    }
+                }
+            }
+
+            let extension_options: &str = match self.executable {
+                Executable::NODE => NODE_EXTS,
+                Executable::CARGO => CARGO_EXTS,
+                Executable::GOLANG => GOLANG_EXTS,
+                Executable::PYTHON => PY_EXTS,
+            };
+
+            for n_ext in extension_options.split(" ") {
+                if path.ends_with(n_ext) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         pub fn new(args: Vec<String>) -> Config {
+            println!("{:?}", args);
             let file_conf_result = processor::load_file_config();
             let mut is_config_file: bool = false;
             let mut new_config: Config = match file_conf_result {
@@ -71,15 +141,43 @@ pub mod types {
             }
 
             let mut target_index = 1;
-            let mut inspect = false;
-            if args[1].eq("--inspect") {
-                target_index = 2;
-                inspect = true;
-            }
-            new_config.inspect = inspect;
 
-            if target_index >= args.len() {
-                panic!("{ERR_MESSAGE}");
+            loop {
+                if target_index == args.len() - 1 {
+                    break;
+                }
+
+                if target_index >= args.len() {
+                    panic!("{ERR_MESSAGE} V");
+                }
+
+                if args[target_index].contains("--inspect") {
+                    new_config.inspect = true;
+                }
+
+                if args[target_index].contains("--exec") {
+                    let exec =
+                        get_executable(args[target_index].split("=").collect::<Vec<&str>>()[1]);
+                    new_config.executable = exec;
+                }
+
+                if args[target_index].contains("--ignore") {
+                    let ls = args[target_index].split("=").collect::<Vec<&str>>()[1]
+                        .split(",")
+                        .map(|str| str.to_string())
+                        .collect::<Vec<String>>();
+                    new_config.ignore_list = ls;
+                }
+
+                if args[target_index].contains("--watch") {
+                    let ls = args[target_index].split("=").collect::<Vec<&str>>()[1]
+                        .split(",")
+                        .map(|str| str.to_string())
+                        .collect::<Vec<String>>();
+                    new_config.watch_list = ls;
+                }
+
+                target_index += 1;
             }
 
             let target = File::open(&args[target_index]);
@@ -90,7 +188,9 @@ pub mod types {
                     panic!("Invalid arguments: Target file not specified");
                 }
             };
+
             new_config.target = target_file;
+            println!("{:?}", new_config);
             new_config
         }
         pub fn get_command(&self) -> String {
@@ -116,10 +216,26 @@ pub mod types {
     fn set_default_inspect() -> bool {
         false
     }
+    fn set_default_ignore_list() -> Vec<String> {
+        vec![]
+    }
+    fn set_default_watch_list() -> Vec<String> {
+        vec![]
+    }
+
+    fn get_executable(exec: &str) -> Executable {
+        match exec {
+            "NODE" => Executable::NODE,
+            "GOLANG" => Executable::GOLANG,
+            "PYTHON" => Executable::PYTHON,
+            "CARGO" => Executable::CARGO,
+            _ => Executable::NODE,
+        }
+    }
 }
 
 pub mod processor {
-    use crate::constants::CONFIG_FILE;
+    use crate::{constants::CONFIG_FILE, types::Executable};
     use std::{
         fs::File,
         io::Read,
@@ -159,8 +275,6 @@ pub mod processor {
         let mut command = Command::new(base_cmd);
         command.args(args);
 
-        println!("{:?}", config.get_command());
-
         match command.spawn() {
             Ok(child) => Some(child),
             Err(err) => {
@@ -170,22 +284,18 @@ pub mod processor {
         }
     }
 
-    pub fn should_ignore_path(path: &String) -> bool {
-        if path.contains("wachit.json")
+    pub fn should_ignore_path(path: &String, config: &Config) -> bool {
+        if (path.contains("wachit.json")
             || path.contains("build")
             || path.contains("node_modules")
             || path.ends_with(".env")
             || path.ends_with(".gitignore")
             || path.ends_with(".next")
             || path.ends_with(".git")
-            || path.contains("target")
+            || (config.executable == Executable::CARGO && path.contains("target"))
             || path.contains(".vscode")
-            || path.contains("dist")
-            || (!(path.ends_with(".ts"))
-                && !(path.ends_with(".js"))
-                && !(path.ends_with(".tsx"))
-                && !(path.ends_with(".jsx"))
-                && !(path.ends_with(".json")))
+            || path.contains("dist"))
+            || !config.should_restart(path)
         {
             return true;
         }

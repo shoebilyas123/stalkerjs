@@ -32,7 +32,7 @@ fn main() {
 
                 for path in event.paths {
                     let p = path.to_str().unwrap().to_string();
-                    ignore_path = should_ignore_path(&p);
+                    ignore_path = should_ignore_path(&p, &confg);
                 }
 
                 if ignore_path {
