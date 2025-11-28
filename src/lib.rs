@@ -28,7 +28,7 @@ pub mod types {
     pub enum ConfigValues {
         String,
     }
-    #[derive(Serialize, Deserialize, Debug, PartialEq)]
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
     pub enum Executable {
         NODE,
         GOLANG,
@@ -47,7 +47,7 @@ pub mod types {
         }
     }
 
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct Config {
         #[serde(default = "set_default_executable")]
         pub executable: Executable,
@@ -63,6 +63,9 @@ pub mod types {
 
         #[serde(default = "set_default_watch_list")]
         pub watch_list: Vec<String>,
+
+        #[serde(default = "set_default_delay")]
+        pub delay: u64,
     }
     impl Config {
         pub fn create_default_config() -> Config {
@@ -72,6 +75,7 @@ pub mod types {
                 target: set_default_target(),
                 watch_list: set_default_watch_list(),
                 ignore_list: set_default_ignore_list(),
+                delay: set_default_delay(),
             }
         }
 
@@ -121,7 +125,6 @@ pub mod types {
         }
 
         pub fn new(args: Vec<String>) -> Config {
-            println!("{:?}", args);
             let file_conf_result = processor::load_file_config();
             let mut is_config_file: bool = false;
             let mut new_config: Config = match file_conf_result {
@@ -221,6 +224,9 @@ pub mod types {
     }
     fn set_default_watch_list() -> Vec<String> {
         vec![]
+    }
+    fn set_default_delay() -> u64 {
+        2000
     }
 
     fn get_executable(exec: &str) -> Executable {
